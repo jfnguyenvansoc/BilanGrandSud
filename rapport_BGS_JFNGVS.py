@@ -46,9 +46,9 @@ def OrdreKeys(dico):
 ######################################################################################################
 rep = r"C:\Users\jeanf\OneDrive - Association OEIL\DONNEES\Traitement_SIG\GALAXIA\Tous_Types\2020\200825_IntegrationSuiteGDSud2018_2019_THIO"
 gdb = rep + r"\GALAXIA_TOPOMAT_FORMES.gdb"
-FichierPDFSortie = "ExportBGSSout_Graphique_2020.pdf"
+FichierPDFSortie = "ExportBGSSout_Graphique_2020_LMax.pdf"
 annee_fin_etude = 2020
-fichier_excel_gamme_ref = rep + r"\ExportBilanGrandSud\ExportBGSSout2020.xlsx"
+fichier_excel_gamme_ref = rep + r"\ExportBilanGrandSud\\EauxSouterraines\ExportBGSSout2020.xlsx"
 tb_parametre = "TB_PARAMETRES"
 couche_stations = "FC_STATIONS"
 tb_donnees = "TB_DATA_SOUT"
@@ -71,6 +71,8 @@ IdSuivi = "SOUT"
 Reference = "Non"
 #Selection particuliere sur la table de donnees
 SelectionPart = "Non"
+#Condition de prise en compte des limites de valeurs max par parametre mettre "Oui" ou "Non"
+LimiteMax = "Oui"
 
 if SelectionPart == "Oui" and IdSuivi == "SOUT":
     SelectData = "BilanEnv_id_parametre LIKE '%/" + IdSuivi + "/%' AND BilanEnv_id_parametre NOT LIKE '%/PHYS_CHIMI_CONT/%'"
@@ -92,6 +94,12 @@ elif Reference == "Oui" and IdSuivi == "SOUT":
                      + "OR BilanENVRefSuiviTxt = 'Controle' AND BilanEnvCompartiment LIKE '%" + IdSuivi + "%' AND " + ChampOrdreRefStat + " IS NOT NULL"
 elif Reference == "Oui":
     where_stations = "BilanENVRefSuiviTxt = 'Reference' AND BilanEnvCompartiment LIKE '%" + IdSuivi + "%' AND " + ChampOrdreRefStat + " IS NOT NULL"
+#condition supplementaire demandee par LD d'exclure 7_1 7_2 7_3 car probleme de salinite sur les stations et integre les piezometres de controle
+elif IdSuivi == "SOUT":
+    where_stations = "BilanENVRefSuiviTxt = 'Suivi'  AND BilanEnvCompartiment LIKE '%" + IdSuivi + "%' AND " + ChampOrdreRefStat + " IS NOT NULL" \
+                     + " AND id_geometry <> '7_1'AND id_geometry <> '7_2' AND id_geometry <> '7_3'" + \
+                     "OR BilanENVRefSuiviTxt = 'Controle'  AND BilanEnvCompartiment LIKE '%" + IdSuivi + "%' AND " + ChampOrdreRefStat + " IS NOT NULL" \
+                     + " AND id_geometry <> '7_1'AND id_geometry <> '7_2'AND id_geometry <> '7_3'"
 else:
     where_stations = "BilanENVRefSuiviTxt = 'Suivi' AND BilanEnvCompartiment LIKE '%" + IdSuivi + "%' AND " + ChampOrdreRefStat + " IS NOT NULL"
 
@@ -101,8 +109,7 @@ field_data = {"OBJECTID":0, "id_parametre":1, "id_geometry":2, "date_":3, "valeu
 field_parametres = {"OBJECTID":0, "id_parametre":1, "nom":2, "unite":3, "BilanENV":4, "OrdreBilanENV":5, "id_cat2":6, "BilanENVLimiteMax":7}
 #changmeent BilanENVTypeStation
 field_station = {"OBJECTID":0, "SHAPE":1, "nom":2, "id_geometry":3, "nom_simple":4, "BilanENVRefSuiviTxt":5, ChampStationRef:6, ChampOrdreRefStat:7, "BilanEnvCompartiment":8}
-#Condition de prise en compte des limites de valeurs max par parametre mettre "Oui" ou "Non"
-LimiteMax = "Non"
+
 ##############################################FIN DES PARAMETRES ########################################################
 ####MODIFICATION POUR LA RECUPERATION DES DONNEES############################
 if LimiteMax == "Oui":
@@ -146,11 +153,12 @@ for p in Parametres:
                     annee_fin_etude + 1) + "-01-01' AND id_parametre = '" + p[
                                  field_parametres["id_parametre"]] + "' AND id_geometry = '" + s[
                                  field_station["id_geometry"]] + "' AND valeur < 0.01001"
+            #condition supplementaire demandee par LD d'avoir la valeur demandee integree au graphique seulement pour SOUT
             elif not ParamLimites[p[field_parametres["id_parametre"]]] is None:
                 SQLDataSel = "date_ >= date '" + str(annee_dbt_etude) + "-01-01' AND date_ < date '" + str(
                     annee_fin_etude + 1) + "-01-01' AND id_parametre = '" + p[
                                  field_parametres["id_parametre"]] + "' AND id_geometry = '" + s[
-                                 field_station["id_geometry"]] + "' AND valeur < " + str(ParamLimites[p[field_parametres["id_parametre"]]])
+                                 field_station["id_geometry"]] + "' AND valeur <= " + str(ParamLimites[p[field_parametres["id_parametre"]]])
             else:
                 SQLDataSel = "date_ >= date '" + str(annee_dbt_etude) + "-01-01' AND date_ < date '" + str(
                     annee_fin_etude + 1) + "-01-01' AND id_parametre = '" + p[
