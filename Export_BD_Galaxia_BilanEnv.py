@@ -3,7 +3,8 @@ import arcpy, xlsxwriter
 from unidecode import unidecode
 from ModuleBilanEnv import SQLParam, LignesSup, LigneExcelValeur, PeriodeAnnee, PeriodeSsChaudeMIB, PeriodeSsPoiss
 from ModuleBilanEnv import FormatExcel
-from ModuleBilanEnvStatistiques import StatistiquesGammeReference, StatistiquesPeriode
+from ModuleBilanEnvStatistiquesGammeRef import StatistiquesGammeReference
+from ModuleBilanEnvStatistiquesPeriode import StatistiquesPeriode
 from ModuleBilanEnvExportMetrique import ExportMetrique
 
 TB_DONNEES = arcpy.GetParameterAsText(0)
@@ -27,15 +28,13 @@ NomXMLGRSortie = arcpy.GetParameterAsText(15)
 GammeXMLVoulues = arcpy.GetParameterAsText(16)
 AnneeEtude = int(arcpy.GetParameterAsText(17))
 ExcelResultatPrec = arcpy.GetParameterAsText(18)
-
-
 GammeXMLVoulues = GammeXMLVoulues.split(";")
 GammeXMLVoulues = [unidecode(gxml).replace("'","") for gxml in GammeXMLVoulues]
 if NomXMLSortie[-4:] != ".xml":
     NomXMLSortie = NomXMLSortie + ".xml"
 if NomXMLGRSortie[-4:] != ".xml":
     NomXMLGRSortie = NomXMLGRSortie + ".xml"
-
+milieu = "Eaux douces"
 #organisation des premieres colonnes
 indiceCol = {"TypeData":0, "TypeStation":1, "Localisation":2, "TypeBV":3, "Zone":4, "ZoneReference":5, "Station":6, "Date":7,"Periode":8,"PremierParam":9}
 
@@ -53,6 +52,7 @@ if len(Params) == 0:
     del Params
     arcpy.AddMessage("Fin du travail pour le gros matou!!! Oueeee")
 else:
+    arcpy.AddMessage(str(len(Params)) + " parametres pour le suivi " + Suivi)
     #Attention BilanENVTypeStation correspond a Localisation dans le fichier en sortie
     if IdSuivi == "SURF":
         SQLStation = "BilanENVRefSuiviTxt IS NOT NULL AND BilanENVCompartiment LIKE '%" + IdSuivi + "%' AND BilanENVTypeStation = 'Riviere' OR BilanENVRefSuiviTxt IS NOT NULL AND BilanENVCompartiment LIKE '%" + IdSuivi + "%'"
@@ -68,8 +68,10 @@ else:
     SQL = SQLParam(PmsIds,StatIds,TB_DONNEES)
     arcpy.AddMessage("Nombre de stations: "+ str(len(Stations)))
     arcpy.AddMessage("Maintenant le gros matou recupere les donnees ordonnees par date de mesure, station, parametre")
-    Datas = [list(d) for d in arcpy.da.SearchCursor(TB_DONNEES,["id_geometry",ChampDataParam,"date_","valeur","methode_analyse","valeur_texte","signe","limite_quantification"],sql_clause=(None,'ORDER BY date_, id_geometry, ' + ChampDataParam))]
     arcpy.SelectLayerByAttribute_management(TB_DONNEES, "CLEAR_SELECTION")
+    Datas = [list(d) for d in arcpy.da.SearchCursor(TB_DONNEES, ["id_geometry", ChampDataParam, "date_", "valeur", "methode_analyse",
+                                                                 "valeur_texte", "signe", "limite_quantification"],
+                                                    sql_clause=(None, 'ORDER BY date_, id_geometry, ' + ChampDataParam))]
     arcpy.AddMessage(str(len(Datas)) + " donnees recuperees pour le Bilan Environnement sur " + Suivi + " pour le gros matou. Y'a du taff")
     arcpy.AddMessage("Faut bien stocker quelque part le resultat... le gros matou cree le fichier Excel en sortie. Vous lui avez dit qu'elle s'appelle " + ExcelSortie)
     XLSX = xlsxwriter.Workbook(RepSortie + "/" + ExcelSortie)
@@ -240,7 +242,7 @@ else:
                             Line.append(DatasSelDateP[5].replace(".",","))
                             LineM.append(DatasSelDateP[4])
                             LineS.append(DatasSelDateP[6])
-                LigneExcelValeur(FormVal, FormNorm, FormDate, Feuille, Line, indxl)
+                LigneExcelValeur(FormVal, FormNorm, FormDate, Feuille, Line, indxl, milieu)
                 indxl = indxl + 1
                 DatasExp.append(Line)
                 DatasMeth.append(LineM)
@@ -248,12 +250,12 @@ else:
                 if len(OtherDatas) > 0:
                     indlines = [od[0] for od in OtherDatas]
                     indlines = list(set(indlines))
-                    OtherLines = LignesSup(OtherDatas,Line,Params)
-                    OtherLinesM = LignesSup(OtherDatasM,LineM,Params)
-                    OtherLinesS = LignesSup(OtherDatasS,LineS,Params)
+                    OtherLines = LignesSup(OtherDatas,Line,Params,indiceCol["PremierParam"])
+                    OtherLinesM = LignesSup(OtherDatasM,LineM,Params,indiceCol["PremierParam"])
+                    OtherLinesS = LignesSup(OtherDatasS,LineS,Params,indiceCol["PremierParam"])
                     del OtherDatas,OtherDatasM, OtherDatasS
                     for ol in OtherLines:
-                        LigneExcelValeur(FormVal, FormNorm, FormDate, Feuille, ol, indxl)
+                        LigneExcelValeur(FormVal, FormNorm, FormDate, Feuille, ol, indxl, milieu)
                         indxl = indxl + 1
                         DatasExp.append(ol)
                     del OtherLines
@@ -276,16 +278,16 @@ else:
         DatasExp = [d for d in DatasExp if d[8][0:13] == "Saison chaude"]
         #Gamme de reference avant Statistiques de Periode pour le Percentile 75
         arcpy.AddMessage("le gros matou va traiter d'abord les metriques pour les Gammes de reference :-(")
-        StatsGamm = StatistiquesGammeReference(DatasMeth, DatasSigne, DatasExp, Params, IdSuivi)
+        StatsGamm = StatistiquesGammeReference(milieu, DatasMeth, DatasSigne, DatasExp, Params, IdSuivi, AnneeEtude)
         StatsGammP = [stg for stg in StatsGamm if stg[0].find("Gamme de reference - Percentile") >= 0]
         arcpy.AddMessage("le gros matou va traiter ensuite les metriques par Periode :-(")
-        StatsPeriode = StatistiquesPeriode(DatasMeth,DatasSigne,DatasExp,Params, StatsGammP, IdSuivi)
+        StatsPeriode = StatistiquesPeriode(milieu, DatasMeth,DatasSigne,DatasExp,Params, StatsGammP, IdSuivi)
         #insertion Statistiques par Periode avant les gammes de reference
         for stm in StatsPeriode:
-            LigneExcelValeur(FormMet, FormNorm, FormDate, Feuille, stm, indxl)
+            LigneExcelValeur(FormMet, FormNorm, FormDate, Feuille, stm, indxl, milieu)
             indxl = indxl + 1
         for stg in StatsGamm:
-            LigneExcelValeur(FormGamme, FormNorm, FormDate, Feuille, stg, indxl)
+            LigneExcelValeur(FormGamme, FormNorm, FormDate, Feuille, stg, indxl, milieu)
             indxl = indxl + 1
         ##Mettre ici Gamme reference
     elif TypePeriode == "Saison fraiche - Poissons Crustaces":
@@ -294,39 +296,39 @@ else:
         DatasSigne = [d for d in DatasSigne if d[8][0:14] == "Saison fraiche"]
         DatasExp = [d for d in DatasExp if d[8][0:14] == "Saison fraiche"]
         arcpy.AddMessage("le gros matou va traiter les metriques pour les Gammes de reference :-(")
-        StatsGamm = StatistiquesGammeReference(DatasMeth, DatasSigne, DatasExp, Params, IdSuivi)
+        StatsGamm = StatistiquesGammeReference(milieu, DatasMeth, DatasSigne, DatasExp, Params, IdSuivi, AnneeEtude)
         StatsGammP = [stg for stg in StatsGamm if stg[0].find("Gamme de reference - Percentile") >= 0]
         arcpy.AddMessage("le gros matou va traiter ensuite les metriques par Periode :-(")
-        StatsPeriode = StatistiquesPeriode(DatasMeth, DatasSigne, DatasExp, Params, StatsGammP, IdSuivi)
+        StatsPeriode = StatistiquesPeriode(milieu, DatasMeth, DatasSigne, DatasExp, Params, StatsGammP, IdSuivi)
         ##Mettre ici Gamme reference
         for stm in StatsPeriode:
-            LigneExcelValeur(FormMet, FormNorm, FormDate, Feuille, stm, indxl)
+            LigneExcelValeur(FormMet, FormNorm, FormDate, Feuille, stm, indxl, milieu)
             indxl = indxl + 1
         for stg in StatsGamm:
-            LigneExcelValeur(FormGamme, FormNorm, FormDate, Feuille, stg, indxl)
+            LigneExcelValeur(FormGamme, FormNorm, FormDate, Feuille, stg, indxl, milieu)
             indxl = indxl + 1
     else:
         arcpy.AddMessage("Le gros matou vous parle: La periode est: " + TypePeriode)
         ##Mettre ici Gamme reference
         arcpy.AddMessage("le gros matou va traiter d'abord les metriques pour les Gammes de reference :-(")
-        StatsGamm = StatistiquesGammeReference(DatasMeth, DatasSigne, DatasExp, Params, IdSuivi,TB_BilanENVXMLParam)
+        StatsGamm = StatistiquesGammeReference(milieu, DatasMeth, DatasSigne, DatasExp, Params, IdSuivi,AnneeEtude, TB_BilanENVXMLParam)
         StatsGammP = [stg for stg in StatsGamm if stg[0].find("Gamme de reference - Percentile") >= 0]
         arcpy.AddMessage("le gros matou va traiter ensuite les metriques par Periode :-(")
-        StatsPeriode = StatistiquesPeriode(DatasMeth, DatasSigne, DatasExp, Params, StatsGammP, IdSuivi)
+        StatsPeriode = StatistiquesPeriode(milieu, DatasMeth, DatasSigne, DatasExp, Params, StatsGammP, IdSuivi)
         arcpy.AddMessage("Nombre de Statistique par annee " + str(len(StatsPeriode)))
         arcpy.AddMessage("Nombre de Statistique pour les gammes de reference " + str(len(StatsGamm)))
         for stm in StatsPeriode:
-            LigneExcelValeur(FormMet, FormNorm, FormDate, Feuille, stm, indxl)
+            LigneExcelValeur(FormMet, FormNorm, FormDate, Feuille, stm, indxl, milieu)
             indxl = indxl + 1
         for stg in StatsGamm:
-            LigneExcelValeur(FormGamme, FormNorm, FormDate, Feuille, stg, indxl)
+            LigneExcelValeur(FormGamme, FormNorm, FormDate, Feuille, stg, indxl, milieu)
             indxl = indxl + 1
             
     #Creation des fichiers XML pour les metriques et gammes de reference
     XLSX.close()
     # Filtre sur l'Ordre a partir de 1 et 0 + NULL ignore
     StationsOrdre = [stat for stat in Stations if stat[8] != None and stat[8] > 0]
-    ExportMetrique(StatsPeriode, StatsGamm, Params, TB_BilanENVXMLParam, TB_BilanENVXMLMetr, TB_BilanENVXMLGam, IdSuivi,
+    ExportMetrique(milieu, StatsPeriode, StatsGamm, Params, TB_BilanENVXMLParam, TB_BilanENVXMLMetr, TB_BilanENVXMLGam, IdSuivi,
                    MetriqueXMLVoulues, GammeXMLVoulues, RepSortie + "/" + NomXMLSortie, StationsOrdre, "Suivi", AnneeEtude, ExcelResultatPrec)
     #StationsOrdreRef = [stat for stat in Stations if stat[9] != None and stat[9] > 0]
     #demande temporaire
@@ -334,7 +336,7 @@ else:
         StationsOrdreRef = [stat for stat in Stations if stat[0] == "WJ_01" or stat[0] == "3_C"]
     else:
         StationsOrdreRef = [stat for stat in Stations if stat[9] > 0]
-    ExportMetrique(StatsPeriode, StatsGamm, Params, TB_BilanENVXMLParam, TB_BilanENVXMLMetr, TB_BilanENVXMLGam, IdSuivi,
+    ExportMetrique(milieu, StatsPeriode, StatsGamm, Params, TB_BilanENVXMLParam, TB_BilanENVXMLMetr, TB_BilanENVXMLGam, IdSuivi,
                    MetriqueXMLVoulues, GammeXMLVoulues, RepSortie + "/" + NomXMLGRSortie, StationsOrdreRef, "Reference", AnneeEtude)
     del DatasMeth, DatasSigne, Stations, Params, StatistiquesPeriode,DatasExp
     arcpy.AddMessage("Le gros matou est fatigue, il va dormir. A plous!!!")

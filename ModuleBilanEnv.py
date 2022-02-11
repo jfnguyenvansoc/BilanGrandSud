@@ -4,7 +4,8 @@ from unidecode import unidecode
 
 #organisation des premieres colonnes
 indiceCol = {"TypeData":0, "TypeStation":1, "Localisation":2, "TypeBV":3, "Zone":4, "ZoneReference":5, "Station":6, "Date":7,"Periode":8,"PremierParam":9}
-
+#organisation des premieres colonnes milieu marin
+indiceColMar = {"TypeData":0, "TypeStation":1, "Zone":2, "TypologieStation":3, "TypeRef":4, "Station":5, "Date":6, "Periode":7,"PremierParam":8}
 def SQLParam(ParamList,StatList,TableDonnees):
     ParamList = [unidecode(p) for p in ParamList]
     StatList = [unidecode(s) for s in StatList]
@@ -24,8 +25,8 @@ def SQLParam(ParamList,StatList,TableDonnees):
     arcpy.SelectLayerByAttribute_management(TableDonnees,"SUBSET_SELECTION",SQLStat)
 
 #creation dautres lignes supplementaires car si un ou plusieurs parametres a la meme date et meme station plusieurs valeurs sont rencontrees
-def LignesSup(AutresDonnees,PremiereLigne,ListParam):
-    DebutLigne = PremiereLigne[0:9]
+def LignesSup(AutresDonnees,PremiereLigne,ListParam,iPremParam):
+    DebutLigne = PremiereLigne[0:iPremParam]
     IndexLigne = [ad[0] for ad in AutresDonnees]
     IndexLigne = list(set(IndexLigne))
     IndexLigne.sort()
@@ -34,8 +35,8 @@ def LignesSup(AutresDonnees,PremiereLigne,ListParam):
         DonneeFiltre = [ad for ad in AutresDonnees if ad[0] == il]
         Line = list()
         Line.extend(DebutLigne)
-        indligneParam = len(ListParam) + 9
-        x = 9
+        indligneParam = len(ListParam) + iPremParam
+        x = iPremParam
         #tous les index de lignes doivent etre parcours
         while x < indligneParam:
             DonneeFiltParam = [df for df in DonneeFiltre if df[2] == x]
@@ -70,6 +71,14 @@ def LignesSup(AutresDonnees,PremiereLigne,ListParam):
 def PeriodeAnnee(DateEntree):
     return DateEntree.strftime("%Y")
 
+#Si periode correspond a Saisons pour les Flux a particule fonction a utiliser Milieu MARIN
+def PeriodeSsFLUX(DateEntree):
+    #saison chaude de mai a juillet
+    if DateEntree.day >= 16 and DateEntree.month == 5 or DateEntree.month > 5 and DateEntree.month < 11 or DateEntree.day <= 15 and DateEntree.month == 11:
+        periode = "Saison fraiche " + DateEntree.strftime("%Y")
+    else:
+        periode = "Saison chaude " + DateEntree.strftime("%Y")
+    return periode
 
 #Si periode correspond a Saison Chaude Macro Inverterbres fonction a utiliser
 def PeriodeSsChaudeMIB(DateEntree):
@@ -166,6 +175,12 @@ def AnneeMinMax(DatesListe):
     MaxDate = max(DatesListe)
     return MinDate.strftime("%Y") + "-" + MaxDate.strftime("%Y")
 
+def Annee3ans(DatesListe):
+    MaxDate = max(DatesListe)
+    MaxYear = MaxDate.strftime("%Y")
+    MinYear = str(int(MaxYear)-2)
+    return MinYear + "-" + MaxYear
+
 #trouver les methodes Gamme de ref
 def FindMethodes(DonneesM, ind):
     Meths = [d[ind] for d in DonneesM if d[ind] is not None and d[ind] != ""]
@@ -203,7 +218,8 @@ def FindSigne(DonneesS,ind):
 def FindValsNonVides(DonneesEx, ind):
     DonneesExNnVide = [d for d in DonneesEx if d[ind] is not None and d[ind] != ""]
     valN = len(DonneesExNnVide)
-    ValsEx = [float(d[ind].replace(",", ".")) for d in DonneesExNnVide]
+    ValsEx = [float(d[ind].replace(",", ".")) for d in DonneesExNnVide if str(type(d[ind])) == "<type 'str'>" or str(type(d[ind])) == "<type 'unicode'>"]
+    ValsEx.extend([d[ind] for d in DonneesExNnVide if str(type(d[ind])) == "<type 'float'>" or str(type(d[ind])) == "<type 'int'>"])
     return [valN,ValsEx]
 
 def FindStatsCal(ValsC):
@@ -223,7 +239,7 @@ def FindStatsCal(ValsC):
     perc95 = str(numpy.percentile(ValsC, 95)).replace(".", ",")
     Min = str(min(ValsC)).replace(".", ",")
     Max = str(max(ValsC)).replace(".", ",")
-    return  {"min" : Min, "max" : Max, "moy": moy, "ect" : ect, "med": med, "perc10" : perc10, "perc25" : perc25, "perc75" : perc75, "perc80" : perc80, "perc85" : perc85, "perc90" : perc90, "perc95" : perc95}
+    return {"min" : Min, "max" : Max, "moy": moy, "ect" : ect, "med": med, "perc10" : perc10, "perc25" : perc25, "perc75" : perc75, "perc80" : perc80, "perc85" : perc85, "perc90" : perc90, "perc95" : perc95}
 
 
 def NbSupPerc(StGP, indcol, valcol, percRef, ind, ValsEx, ValN):
@@ -266,8 +282,7 @@ def FormatExcel(FExcel,bold,taille,police,couleur,couleurfd,formatcell):
     FormF.set_font_color(couleur)
     FormF.set_font(police)
     FormF.set_font_size(taille)
-    if formatcell != "":
-        FormF.set_num_format(formatcell)
+    FormF.set_num_format(formatcell)
     return FormF
 #fonction pour savoir si le texte peut etre un numerique entier 0 = Oui 1=Non
 def NumEnt(txt):
@@ -278,13 +293,17 @@ def NumEnt(txt):
     return val
 
 #insertion de ligne de donnees sur Excel
-def LigneExcelValeur(formDt, formN, formDate, feuilleX, ligne, Ind):
+def LigneExcelValeur(formDt, formN, formDate, feuilleX, ligne, Ind, mil):
     colX = 0
+    if mil == "Eaux douces":
+        icol = indiceCol
+    else:
+        icol = indiceColMar
     for L in ligne:
         if colX == 0:
             feuilleX.write(Ind, colX, L, formDt)
         #cellule date
-        elif colX == indiceCol["Date"]:
+        elif colX == icol["Date"]:
             feuilleX.write(Ind, colX, L, formDate)
         else:
             #valeur vide
@@ -300,7 +319,7 @@ def LigneExcelValeur(formDt, formN, formDate, feuilleX, ligne, Ind):
                     L = float(L)
                     feuilleX.write_number(Ind, colX, L, formN)
                 #texte en valeur numerique entier
-                elif str(type(L)) == "<type 'str'>" and NumEnt(L) == 0:
+                elif str(type(L)) == "<type 'str'>" and NumEnt(L) == 0 or str(type(L)) == "<type 'unicode'>" and NumEnt(L) == 0 :
                     L = float(L)
                     feuilleX.write_number(Ind,colX, L, formN)
                 else:
