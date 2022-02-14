@@ -50,14 +50,10 @@ def LignesSup(AutresDonnees,PremiereLigne,ListParam,iPremParam):
                 b = 0
                 concat = ""
                 while b < nbpl:
-                    if DonneeFiltParam[b][3] is None:
-                        dfp = ""
-                    else:
-                        dfp = DonneeFiltParam[b][3]
                     if b == 0:
-                        concat = dfp
+                        concat = DonneeFiltParam[b][3]
                     else:
-                        concat = concat + "|" + dfp
+                        concat = concat + "|" + DonneeFiltParam[b][3]
                     b = b + 1
             #si ne correspond pas au parametre
             else:

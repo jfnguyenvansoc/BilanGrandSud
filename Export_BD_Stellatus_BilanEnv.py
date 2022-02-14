@@ -57,6 +57,19 @@ elif IdSuivi == "RECOUVR12":
     Params = [p[0] + ";" + p[1] + ";" + p[2] + ";" + p[3] + ";" + str(p[4]) for p in Params]
     Params = list(set(Params))
     Params = [p.split(";") for p in Params]
+elif IdSuivi == "EAU":
+    Params = [list(p) for p in arcpy.da.SearchCursor(TB_PARAMETRES,[ChampDataParam,"nom","BilanENV","unite","BilanEnvSeuil", "OrdreBilanENV"],sql_clause=(None,'ORDER BY OrdreBilanENV'))]
+    Ordres = list(set([ordr[5] for ordr in Params]))
+    ParamsFilt = list()
+    for o in Ordres:
+        ParamSel = [p for p in Params if p[5] == o]
+        ParamsFilt.append(ParamSel[0])
+    Params = list()
+    Params.extend(ParamsFilt)
+    del ParamsFilt
+    Params = [p[0] + ";" + p[1] + ";" + p[2] + ";" + p[3] + ";" + str(p[4]) for p in Params]
+    Params = list(set(Params))
+    Params = [p.split(";") for p in Params]
 else:
     Params = [list(p) for p in arcpy.da.SearchCursor(TB_PARAMETRES,[ChampDataParam,"nom","BilanENV","unite","BilanEnvSeuil", "OrdreBilanENV"],"BilanENV = 'Oui' AND "+ ChampDataParam + " LIKE '%" + IdSuivi + "%'",
                                                      sql_clause=(None,'ORDER BY OrdreBilanENV'))]
@@ -278,7 +291,6 @@ else:
         StatsGammP = list()
         StatsPeriode = StatistiquesPeriode(milieu, DatasMeth, DatasSigne, DatasExp, Params, StatsGammP, IdSuivi)
         arcpy.AddMessage("le gros matou va traiter ensuite les gammes de reference :-(")
-        
         if IdSuivi == "EAU":
             Stat3ans = Statistiques3ans(DatasMeth,DatasSigne,DatasExp,Params,IdSuivi,AnneeEtude)
             arcpy.AddMessage("Nombre de Statistique pour les 3 ans: " + str(len(Stat3ans)))
